@@ -1,13 +1,11 @@
 from __future__ import unicode_literals
-
-from itertools import chain
-
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.db.models.query import QuerySet
 from django.utils.encoding import force_text
+from guardian.compat import get_user_model
 from guardian.ctypes import get_content_type
 from guardian.utils import get_group_obj_perms_model, get_identity, get_user_obj_perms_model
+from itertools import chain
 
 
 def _get_pks_model_and_ctype(objects):
@@ -73,8 +71,7 @@ class ObjectPermissionChecker(object):
             return False
         elif self.user and self.user.is_superuser:
             return True
-        if '.' in perm:
-            _, perm = perm.split('.', maxsplit=1)
+        perm = perm.split('.')[-1]
         return perm in self.get_perms(obj)
 
     def get_group_filters(self, obj):
@@ -120,7 +117,7 @@ class ObjectPermissionChecker(object):
     def get_user_perms(self, obj):
         ctype = get_content_type(obj)
 
-        perms_qs = Permission.objects.filter(content_type=ctype)
+        perms_qs = Permission.objects.all()  # filter(content_type=ctype)
         user_filters = self.get_user_filters(obj)
         user_perms_qs = perms_qs.filter(**user_filters)
         user_perms = user_perms_qs.values_list("codename", flat=True)
@@ -130,7 +127,7 @@ class ObjectPermissionChecker(object):
     def get_group_perms(self, obj):
         ctype = get_content_type(obj)
 
-        perms_qs = Permission.objects.filter(content_type=ctype)
+        perms_qs = Permission.objects.all()  # filter(content_type=ctype)
         group_filters = self.get_group_filters(obj)
         group_perms_qs = perms_qs.filter(**group_filters)
         group_perms = group_perms_qs.values_list("codename", flat=True)
@@ -151,7 +148,7 @@ class ObjectPermissionChecker(object):
         if key not in self._obj_perms_cache:
             if self.user and self.user.is_superuser:
                 perms = list(chain(*Permission.objects
-                                   .filter(content_type=ctype)
+                                   # .filter(content_type=ctype)
                                    .values_list("codename")))
             elif self.user:
                 # Query user and group permissions separately and then combine
@@ -160,7 +157,11 @@ class ObjectPermissionChecker(object):
                 group_perms = self.get_group_perms(obj)
                 perms = list(set(chain(user_perms, group_perms)))
             else:
-                perms = list(set(self.get_group_perms(obj)))
+                group_filters = self.get_group_filters(obj)
+                perms = list(set(chain(*Permission.objects
+                                       # .filter(content_type=ctype)
+                                       .filter(**group_filters)
+                                       .values_list("codename"))))
             self._obj_perms_cache[key] = perms
         return self._obj_perms_cache[key]
 
@@ -187,7 +188,7 @@ class ObjectPermissionChecker(object):
         if self.user and self.user.is_superuser:
             perms = list(chain(
                 *Permission.objects
-                .filter(content_type=ctype)
+                # .filter(content_type=ctype)
                 .values_list("codename")))
 
             for pk in pks:
